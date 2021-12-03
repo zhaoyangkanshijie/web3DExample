@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+    <script src="./three.js"></script>
+</head>
+
+<body>
+    <!--需运行在网站环境，不能是本地文件打开-->
+    <div id="container" style="position: absolute;top: 0;left: 0;width: 100%;height: 100%;"></div>
+
+    <script>
+        const cameraFov = 75;//视角
+        const sceneRadius = 500;//场景球体半径
+        let container = document.getElementById('container');
+        let camera = new THREE.PerspectiveCamera(cameraFov, window.innerWidth / window.innerHeight, 1, 1100);
+        camera.target = new THREE.Vector3(0, 0, 0);
+        let scene = new THREE.Scene();
+
+        let canvas = document.createElement('canvas');
+        let context = canvas.getContext('2d');
+        context.strokeStyle = "rgba(0,0,0,1)";//笔触的颜色
+        context.lineWidth = 4;//线条宽度
+        context.fillStyle = "#ffffff";//填充绘画的颜色
+        context.font = "40px Arial";
+        context.fillText("信息点", 4, 74);//填写文本，x轴坐标，y轴坐标
+        let texture = new THREE.Texture(canvas);//canvas转image作为纹理
+        texture.needsUpdate = true;//在创建后修改纹理，将此标志设置为真，以便正确设置纹理
+        let spriteMaterial = new THREE.SpriteMaterial({
+            map: texture, useScreenCoordinates: false
+        });//使用useScreenCoordinates:true属性建立一个独立于camera摄像范围之外的元素，即它在屏幕上的位置不受camera的位置和焦点变化而变化，它的移动、定位、缩放是基于屏幕坐标的。
+        let sprite = new THREE.Sprite(spriteMaterial);//精灵平面（Sprite）是一个在3D场景中总是面对着相机的平面，并且sprite不接受阴影
+        sprite.position.set(5, 0, 0);
+        scene.add(sprite);
+
+        let geometry = new THREE.SphereGeometry(sceneRadius, 60, 40);
+        geometry.scale(-1, 1, 1);
+
+        let textureLoadedCount = 0;
+        let garden1 = new THREE.MeshBasicMaterial({
+            map: new THREE.TextureLoader().load('./res/1.jpg', function () {
+                textureLoadedCount++
+            })
+        });
+        let mesh = new THREE.Mesh(geometry, garden1);//材料贴在几何体上
+
+        //预加载避免闪屏
+        let garden2 = new THREE.MeshBasicMaterial({
+            map: new THREE.TextureLoader().load('./res/2.jpg', function () {
+                textureLoadedCount++
+            })
+        });
+
+        scene.add(mesh);
+
+        let renderer = new THREE.WebGLRenderer();
+        renderer.setPixelRatio(window.devicePixelRatio);//设置设备像素比。通常用于HiDPI设备防止模糊输出canvas。
+        renderer.setSize(window.innerWidth, window.innerHeight);//调整输出canvas尺寸（宽度，高度），要考虑设备像素比，并且设置视口（viewport）以匹配该尺寸。如果设置 updateStyle 为true，则显式添加像素到输出canvas的样式中。
+        container.appendChild(renderer.domElement);//绘制输出的 Canvas 对象
+
+        let onMouseDownMouseX = 0, onMouseDownMouseY = 0;
+        let isClick;
+        let onPointerDownPointerX, onPointerDownPointerY, onPointerDownLon, onPointerDownLat;
+        let isUserInteracting = false;
+        let lon = 0, onMouseDownLon = 0,
+            lat = 0, onMouseDownLat = 0,
+            phi = 0, theta = 0;
+        let cameraTime = 0;
+        let mouse = new THREE.Vector2();
+        let raycaster = new THREE.Raycaster();//光线投射主要用于物体选择、碰撞检测以及图像成像等方面。
+        document.addEventListener('mousedown', onDocumentMouseDown, false);
+        document.addEventListener('mousemove', onDocumentMouseMove, false);
+        document.addEventListener('mouseup', onDocumentMouseUp, false);
+        document.addEventListener('mousewheel', onDocumentMouseWheel, false);
+        document.addEventListener('touchstart', onDocumentTouchDown, false);
+        document.addEventListener('touchmove', onDocumentTouchMove, false);
+        document.addEventListener('touchend', onDocumentMouseUp, false);
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onDocumentMouseDown(event) {
+            event.preventDefault();
+            raycaster.setFromCamera(mouse, camera);//射线捕捉
+            var intersects = raycaster.intersectObjects([sprite]);
+            if (intersects.length > 0 && textureLoadedCount == 2) {//材质加载完毕，且点击了文字，触发转换场景
+                changeScene();
+            }
+            isUserInteracting = true;
+            isClick = true;
+            onPointerDownPointerX = event.clientX;
+            onPointerDownPointerY = event.clientY;
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+        }
+
+        function onDocumentTouchDown(event) {
+            event.preventDefault();
+            isUserInteracting = true;
+            onPointerDownPointerX = event.touches[0].pageX;
+            onPointerDownPointerY = event.touches[0].pageY;
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+        }
+
+        function onDocumentMouseMove(event) {
+            // 推导过程：
+            // 设A点为点击点(x1,y1),x1=e.clintX, y1=e.clientY，原点在左上角，右x正半轴，下y正半轴
+            // 设A点在世界坐标中的坐标值为B(x2,y2)，原点在屏幕中心，右x正半轴，上y正半轴
+            // A需要通过翻折平移等方法，求出相同位置不同坐标系对应坐标
+            // 先将坐标方向对齐：A的屏幕(第一象限)实际在B的第四象限，x不变，y翻折(x1,-y1)
+            // 然后x和y均需平移半个屏幕
+            // x2' = x1 - innerWidth/2
+            // y2' = innerHeight/2 - y1
+            // 又由于在世界坐标的范围是[-1,1],要得到正确的B值我们必须要将坐标标准化
+            // x2 = (x1 -innerWidth/2)/(innerwidth/2) = (x1/innerWidth)*2-1
+            // 同理得 y2 = -(y1/innerHeight)*2 +1
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+            //经度右递增，纬度上递增(y轴上与client方向相反)
+            if (isUserInteracting === true) {
+                lon = (onPointerDownPointerX - event.clientX) * 0.1 + onPointerDownLon;
+                lat = (event.clientY - onPointerDownPointerY) * 0.1 + onPointerDownLat;
+            }
+        }
+
+        function onDocumentTouchMove(event) {
+            if (isUserInteracting === true) {
+                lon = (onPointerDownPointerX - event.touches[0].pageX) * 0.1 + onPointerDownLon;
+                lat = (event.touches[0].pageY - onPointerDownPointerY) * 0.1 + onPointerDownLat;
+            }
+        }
+
+        function onDocumentMouseUp(event) {
+            isUserInteracting = false;
+        }
+
+        function onDocumentMouseWheel(event) {
+            camera.fov += event.deltaY * 0.05;//根据鼠标垂直滚动轴增加视角，增加相当于变大(靠近)，一般需要设置最大最小值，避免溢出
+            camera.updateProjectionMatrix();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function update() {
+            lat = Math.max(-85, Math.min(85, lat));//纬度限制在[-85°,85°]
+            phi = THREE.Math.degToRad(90 - lat);//与y轴夹角，y轴正方向为90°
+            theta = THREE.Math.degToRad(lon);//与x轴夹角
+            //相机旋转
+            camera.target.x = sceneRadius * Math.sin(phi) * Math.cos(theta);//r在x轴上投影=r在xz平面投影在x轴上投影=rsin(y)cos(x)
+            camera.target.y = sceneRadius * Math.cos(phi);//r在y轴上投影=rsin(y)
+            camera.target.z = sceneRadius * Math.sin(phi) * Math.sin(theta);//r在z轴上投影=r在xz平面投影在z轴上投影=rsin(y)sin(x)
+            camera.lookAt(camera.target);
+
+            //用于把镜头朝向信息点，并向前移动，最后切换场景
+            if (cameraTime > 0 && cameraTime < 50) {
+                camera.target.x = 5;
+                camera.target.y = 0;
+                camera.target.z = 0;
+                camera.lookAt(camera.target);//镜头朝向信息点
+                camera.fov -= 1;//镜头向前移动
+                camera.updateProjectionMatrix();
+                cameraTime++;
+                sprite.visible = false;//信息点不可见
+            } else if (cameraTime == 50) {//到达一定程度，切换场景
+                lat = 0;
+                lon = 0;
+                cameraTime = 0;
+                camera.fov = cameraFov;//初始化新场景视角
+                camera.updateProjectionMatrix();
+                mesh.material = garden2;//初始化新场景材质
+            }
+            renderer.render(scene, camera);
+        }
+
+        function changeScene() {
+            cameraTime = 1;
+        }
+
+        animate();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+        }
+    </script>
+</body>
+
+</html>

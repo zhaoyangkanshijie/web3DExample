@@ -25,6 +25,7 @@
 * [three.js 运动吧物体（03）](https://blog.csdn.net/weixin_48931875/article/details/113775632)
 * [stats](https://github.com/mrdoob/stats.js)
 * [ThreeJS中的点击与交互——Raycaster的用法](https://www.cnblogs.com/lst619247/p/9071233.html)
+* [Three.js中文教程](https://techbrood.com/threejs/docs/)
 
 ## 目录
 

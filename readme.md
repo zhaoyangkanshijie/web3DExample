@@ -26,11 +26,14 @@
 * [stats](https://github.com/mrdoob/stats.js)
 * [ThreeJS中的点击与交互——Raycaster的用法](https://www.cnblogs.com/lst619247/p/9071233.html)
 * [Three.js中文教程](https://techbrood.com/threejs/docs/)
+* [Three.js欧拉对象Euler和四元数Quaternion](https://blog.csdn.net/u014291990/article/details/91877018)
+* [手撕three.js之四元数](https://zhuanlan.zhihu.com/p/76363487)
 
 ## 目录
 
 * [3D方案](#3D方案)
 * [threejs](#threejs)
+    * [四元数](#四元数)
     * [场景（scene）](#场景（scene）)
         * [容器](#容器)
         * [坐标系](#坐标系)
@@ -108,6 +111,91 @@
 * WebGL3D引擎(three.js,babylon.js,playcanvas)
 
 ## threejs
+
+### 四元数
+
+* 欧拉对象Euler
+
+    Euler(x,y,z,order)，参数xyz分别表示绕xyz轴旋转的角度值，角度单位是弧度。参数order表示旋转顺序,默认值XYZ，也可以设置为YXZ、YZX等值
+    ```js
+    // 创建一个欧拉对象，表示绕着xyz轴分别旋转45度，0度，90度
+    var Euler = new THREE.Euler( Math.PI/4,0, Math.PI/2);
+    ```
+
+* 四元数Quaternion
+
+    四元数对象Quaternion使用x、y、z和w四个分量表示。
+
+    * 四元数方法.setFromAxisAngle()
+
+        四元数的方法.setFromAxisAngle(axis, angle)通过旋转轴axis和旋转角度angle设置四元数数据，也就是x、y、z和w四个分量。
+
+        绕单位向量Vector3(x,y,z)表示的轴旋转θ度
+
+        k = sinθ/2
+
+        q=( xk , yk , z*k, cosθ/2)
+
+        ```js
+        var quaternion = new THREE.Quaternion();
+        // 旋转轴new THREE.Vector3(0,1,0)
+        // 旋转角度Math.PI/2
+        quaternion.setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2)
+        console.log('查看四元数结构',quaternion);
+        ```
+
+    * 四元数乘法.multiply()
+
+        对象的一个旋转可以用一个四元数表示，两次连续旋转可以理解为两次旋转对应的四元数对象进行乘法运算。
+
+        ```js
+        // 四元数q1、q2分别表示一个旋转，两个四元数进行乘法运算，相乘结果保存在q2中
+        // 在q1表示的旋转基础在进行q2表示的旋转操作
+        q1.quaternion.multiply(q2);
+        ```
+
+    * 欧拉、四元数和矩阵转化
+
+        欧拉对象、四元数对象和旋转矩阵可以相关转化，都可以表示旋转变换。
+
+        Matrix4.makeRotationFromQuaternion(q)方法可以把四元数转化对应的矩阵对象。
+
+        quaternion.setFromEuler(Euler)通过欧拉对象设置四元数对象
+
+        Euler.setFromQuaternion(quaternion)四元数转化为欧拉对象
+
+* Object3D
+
+    Object3D对象角度属性.rotation的值是欧拉对象Euler,四元数属性.quaternion的值是四元数对象Quaternion。
+
+    执行Object3D对象旋转方法，会同时改变对象的角度属性和四元数属性。四元数属性和位置.position、缩放属性.scale一样会转化为对象的本地矩阵属性.matrix,本地矩阵属性值包含了旋转矩阵、缩放矩阵、平移矩阵。
+
+    ```js
+    // 一个网格模型对象，基类是Object3D
+    var mesh = new THREE.Mesh()
+    // 绕z轴旋转
+    mesh.rotateZ(Math.PI)
+
+    console.log('查看角度属性rotation',mesh.rotation);
+    console.log('查看四元数属性quaternion',mesh.quaternion);
+    ```
+
+    .rotateOnAxis(axis, angle)表示绕绕着任意方向某个轴axis旋转一定角度angle，绕X、Y和Z轴旋转对应的方法分别是rotateX()、rotateY()和rotateZ(),绕着XYZ特定轴旋转的方法是基于.rotateOnAxis()方法实现的。
+
+    ```js
+    // Object3D.js源码
+    rotateOnAxis: function () {
+        var q1 = new Quaternion();
+        // 旋转轴axis，旋转角度angle
+        return function rotateOnAxis( axis, angle ) {
+            // 通过旋转轴和旋转角度设置四元数的xyzw分量
+            q1.setFromAxisAngle( axis, angle );
+            // Object3D对象的四元数属性和四元数q1相乘
+            this.quaternion.multiply( q1 );
+            return this;
+        };
+    }()
+    ```
 
 ### 场景（scene）
 
